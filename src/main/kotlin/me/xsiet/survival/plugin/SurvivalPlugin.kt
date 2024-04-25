@@ -1,17 +1,16 @@
-package com.github.monun.survival.plugin
+package me.xsiet.survival.plugin
 
-import com.github.monun.kommand.kommand
-import com.github.monun.survival.*
-import com.github.monun.tap.effect.playFirework
-import com.github.monun.tap.event.EntityEventManager
-import com.github.monun.tap.fake.FakeEntityServer
-import com.github.monun.tap.fake.invisible
+import io.github.monun.kommand.kommand
+import me.xsiet.survival.*
+import io.github.monun.tap.event.EntityEventManager
+import io.github.monun.tap.fake.FakeEntityServer
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.format.TextColor
 import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.*
 import org.bukkit.entity.ArmorStand
+import org.bukkit.entity.Firework
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ShapedRecipe
@@ -25,23 +24,18 @@ import kotlin.random.Random.Default.nextInt
 /**
  * @author Monun
  */
-class SurvivalPlugin : JavaPlugin() {
-
+class SurvivalPlugin: JavaPlugin() {
     private lateinit var survival: Survival
-
     override fun onEnable() {
         val configFile = File(dataFolder, "config.yml")
         SurvivalConfig.load(configFile)
         Whitelist.load(File(dataFolder, "whitelist.txt"))
-
         setupRecipe()
         setupCommands()
         setupWorlds()
-
         val entityEventManager = EntityEventManager(this)
         val fakeEntityServerForZombie = FakeEntityServer.create(this)
         val fakeEntityServerForHuman = FakeEntityServer.create(this)
-
         survival = Survival(
             this,
             entityEventManager,
@@ -51,7 +45,6 @@ class SurvivalPlugin : JavaPlugin() {
         )
         survival.load()
         Bio.SuperZombie.initWarningStand(fakeEntityServerForHuman)
-
         server.apply {
             pluginManager.registerEvents(EventListener(survival), this@SurvivalPlugin)
             scheduler.runTaskTimer(
@@ -66,22 +59,20 @@ class SurvivalPlugin : JavaPlugin() {
             )
         }
     }
-
     override fun onDisable() {
         if (::survival.isInitialized) {
             survival.unload()
         }
     }
-
     private fun setupCommands() {
+        CommandSVL.register(this)
         kommand {
-            CommandSVL.register(this)
             register("thinking") {
-                require {
-                    this is Player && survival().bio is Bio.SuperZombie && gameMode != GameMode.SPECTATOR
+                requires {
+                    isOp && isPlayer && player.survival().bio is Bio.SuperZombie && player.gameMode != GameMode.SPECTATOR
                 }
                 executes {
-                    val player = it.sender as Player
+                    val player = sender as Player
 
                     player.sendMessage(
                         text("살아남기 위해 고군분투했지만 슈퍼좀비가 되었다..\n하지만 좀비가 되어 Thinking을 해보니 인간은 사라져야해!").color(
@@ -95,14 +86,13 @@ class SurvivalPlugin : JavaPlugin() {
                 }
             }
             register("evolve") {
-                require {
-                    this is Player && survival().bio is Bio.SuperZombie && gameMode != GameMode.SPECTATOR
+                requires {
+                    isOp && isPlayer && player.survival().bio is Bio.SuperZombie && player.gameMode != GameMode.SPECTATOR
                 }
                 executes {
-                    val sender = it.sender as Player
+                    val sender = sender as Player
                     val loc = sender.location
                     loc.world.strikeLightningEffect(loc)
-
                     sender.survival().setBio(Bio.Type.HYPER_ZOMBIE)
                     Bukkit.getServer().sendMessage(
                         text("${sender.name}(이)가 하이퍼 좀비가 되었습니다!").color(TextColor.color(0xFF0000))
@@ -112,11 +102,10 @@ class SurvivalPlugin : JavaPlugin() {
                 }
             }
             register("sacrifice") {
-                require { this is Player && survival().bio is Bio.Human && gameMode != GameMode.SPECTATOR }
+                requires { isOp && isPlayer && player.survival().bio is Bio.Human && player.gameMode != GameMode.SPECTATOR }
                 executes {
-                    val sender = it.sender as Player
+                    val sender = sender as Player
                     val loc = sender.location.apply { y += 1.0 }
-                    val world = loc.world
                     sender.gameMode = GameMode.SPECTATOR
                     FireworkEffect.builder().apply {
                         with(FireworkEffect.Type.STAR)
@@ -124,14 +113,17 @@ class SurvivalPlugin : JavaPlugin() {
                         withTrail()
                         withFlicker()
                     }.build().also { fireworkEffect ->
-                        world.playFirework(loc, fireworkEffect)
+                        val firework = world.spawn(loc, Firework::class.java)
+                        firework.fireworkMeta = firework.fireworkMeta.apply {
+                            addEffects(fireworkEffect)
+                        }
                     }
 
                     world.spawn(loc, ArmorStand::class.java).apply {
                         customName = "${sender.name}의 흔적이다."
                         isCustomNameVisible = true
                         isMarker = true
-                        invisible = true
+                        isInvisible  = true
                         isInvulnerable = true
                         setGravity(false)
                     }
@@ -143,7 +135,7 @@ class SurvivalPlugin : JavaPlugin() {
                             isCustomNameVisible = true
                             customName = "하지만 헛된 희생이었다."
                             isMarker = true
-                            invisible = true
+                            isInvisible = true
                             isInvulnerable = true
                             setGravity(false)
                         }
@@ -152,7 +144,6 @@ class SurvivalPlugin : JavaPlugin() {
             }
         }
     }
-
     private fun setupRecipe() {
         server.addRecipe(
             ShapelessRecipe(
@@ -204,7 +195,6 @@ class SurvivalPlugin : JavaPlugin() {
             }
         )
     }
-
     private fun setupWorlds() {
         for (world in server.worlds) {
             world.setGameRule(GameRule.ANNOUNCE_ADVANCEMENTS, false)
@@ -217,7 +207,6 @@ class SurvivalPlugin : JavaPlugin() {
             world.setGameRule(GameRule.DO_IMMEDIATE_RESPAWN, true)
             world.setGameRule(GameRule.DO_FIRE_TICK, false)
         }
-
         //world, world_nether
         server.worlds.take(2).forEach { world ->
             world.worldBorder.apply {

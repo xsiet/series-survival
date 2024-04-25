@@ -1,9 +1,9 @@
-package com.github.monun.survival
+package me.xsiet.survival
 
-import com.github.monun.survival.plugin.SurvivalPlugin
-import com.github.monun.tap.event.EntityEventManager
-import com.github.monun.tap.fake.FakeEntityServer
-import com.github.monun.tap.ref.UpstreamReference
+import me.xsiet.survival.plugin.SurvivalPlugin
+import io.github.monun.tap.event.EntityEventManager
+import io.github.monun.tap.fake.FakeEntityServer
+import me.xsiet.survival.util.UpstreamReference
 import net.kyori.adventure.text.Component.text
 import net.kyori.adventure.text.format.TextColor
 import org.bukkit.Bukkit
@@ -18,7 +18,7 @@ import java.util.*
 import kotlin.random.Random.Default.nextFloat
 
 class Survival(
-    internal val plugin: SurvivalPlugin,
+    private val plugin: SurvivalPlugin,
     internal val entityEventManager: EntityEventManager,
     internal val fakeEntityServerForZombie: FakeEntityServer,
     internal val fakeEntityServerForHuman: FakeEntityServer,
@@ -29,18 +29,14 @@ class Survival(
         val instance
             get() = instanceRef.get()
     }
-
     private val playerByPlayers = IdentityHashMap<Player, SurvivalPlayer>(Bukkit.getMaxPlayers())
-    val players = Collections.unmodifiableCollection(playerByPlayers.values)
-
+    val players: MutableCollection<SurvivalPlayer> = Collections.unmodifiableCollection(playerByPlayers.values)
     init {
         instanceRef = UpstreamReference(this)
     }
-
     internal fun load() {
         Bukkit.getOnlinePlayers().forEach(this::loadPlayer)
     }
-
     internal fun unload() {
         Bukkit.getOnlinePlayers().forEach(this::unloadPlayer)
         instanceRef.clear()
@@ -48,42 +44,33 @@ class Survival(
         fakeEntityServerForHuman.shutdown()
         entityEventManager.unregisterAll()
     }
-
     internal fun loadPlayer(player: Player) {
         playerByPlayers.computeIfAbsent(player) {
             SurvivalPlayer(this, it).apply { load() }
         }
     }
-
     internal fun unloadPlayer(player: Player) {
         playerByPlayers.remove(player)?.unload()
     }
-
     fun getSurvivalPlayer(player: Player): SurvivalPlayer {
         return requireNotNull(playerByPlayers[player]) { " Unknown player ${player.name}" }
     }
-
     fun playHyperVaccine(loc: Location) {
         val task = HyperVaccine(loc)
 
         task.task = plugin.server.scheduler.runTaskTimer(plugin, task, 60L, 1L)
     }
 }
-
 fun Player.survival(): SurvivalPlayer {
     return Survival.instance.getSurvivalPlayer(this)
 }
-
 class HyperVaccine(private val center: Location) : Runnable {
     lateinit var task: BukkitTask
-
     private var ticks = 0
-
     override fun run() {
         if (ticks++ < 200) {
             val world = center.world
             for (i in 0 until 5) {
-
                 world.spawn(center, Firework::class.java).apply {
                     center.yaw = nextFloat() * 360.0F
                     center.pitch = -45F + nextFloat() * -45.0F
@@ -95,18 +82,15 @@ class HyperVaccine(private val center: Location) : Runnable {
             }
             return
         }
-
         if (ticks % 4 == 0) {
             val zombie = Bukkit.getOnlinePlayers().asSequence().map { it.survival() }
                 .find { it.bio is Bio.Zombie && it.bio !is Bio.HyperZombie }
-
             if (zombie != null) {
                 zombie.player.playEffect(EntityEffect.TOTEM_RESURRECT)
                 zombie.setBio(Bio.Type.HUMAN)
                 Bukkit.getServer().sendMessage(text("${zombie.name}(이)가 좀비 바이러스로부터 해방되었습니다!"))
                 return
             }
-
             Bukkit.getOnlinePlayers().asSequence().map { it.survival() }
                 .find { it.player.gameMode != GameMode.SPECTATOR && it.bio is Bio.HyperZombie }
                 ?.let { hyperZombie ->
@@ -116,7 +100,6 @@ class HyperVaccine(private val center: Location) : Runnable {
                         .sendMessage(text("${hyperZombie.name}(이)가 소멸되었습니다!").color(TextColor.color(0xFF0000)))
                     return
                 }
-
             task.cancel()
         }
     }
